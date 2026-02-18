@@ -1,58 +1,208 @@
 <!DOCTYPE html>
-<html lang="en">
-
-<script>
-    function tocarSom(id) {
-        const audio = document.getElementById(id);
-        if (audio) {
-            audio.currentTime = 0;
-            audio.play();
-        }
-    }
-</script>
-
+<html lang="pt-BR">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MathMania2.2</title>
+    <title>Math Mania Kids</title>
     <base href="/" />
-    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link href="MathMania2.2.styles.css" rel="stylesheet" />
     <link href="manifest.webmanifest" rel="manifest" />
-    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
-    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
 </head>
-
-<script>
-    function tocarSomAleatorio(caminhoBase, arquivos) {
-        const audio = document.getElementById("audioResposta");
-        if (!audio || arquivos.length === 0) return;
-
-        const aleatorio = arquivos[Math.floor(Math.random() * arquivos.length)];
-        audio.src = `${caminhoBase}/${aleatorio}`;
-        audio.currentTime = 0;
-        audio.play();
-    }
-</script>
-
 <body>
-    <div id="app">
-        <svg class="loading-progress">
-            <circle r="40%" cx="50%" cy="50%" />
-            <circle r="40%" cx="50%" cy="50%" />
-        </svg>
-        <div class="loading-progress-text"></div>
-    </div>
+    <main class="game-page">
+        <section class="game-card">
+            <header class="game-header">
+                <img src="mascoteFase.gif" alt="Mascote animado sorrindo" class="mascot" />
+                <div>
+                    <h1>🎯 Math Mania Kids</h1>
+                    <p>Treine matemática brincando! Acerte para ganhar estrelas e subir de nível.</p>
+                </div>
+            </header>
 
-    <div id="blazor-error-ui">
-        An unhandled error has occurred.
-        <a href="" class="reload">Reload</a>
-        <a class="dismiss">🗙</a>
-    </div>
-    <script src="_framework/blazor.webassembly.js"></script>
-    <script>navigator.serviceWorker.register('service-worker.js');</script>
+            <section class="status-grid">
+                <div class="pill"><span>Pontos</span><strong id="score">0</strong></div>
+                <div class="pill"><span>Nível</span><strong id="level">1</strong></div>
+                <div class="pill"><span>Sequência</span><strong id="streak">0</strong></div>
+                <div class="pill"><span>Tempo</span><strong id="timer">20s</strong></div>
+            </section>
+
+            <section class="question-box">
+                <p id="challengeLabel">Resolva:</p>
+                <h2 id="question">2 + 3 = ?</h2>
+            </section>
+
+            <section class="answers" id="answers"></section>
+
+            <footer class="feedback-area">
+                <p id="feedback">Escolha a resposta correta 👇</p>
+                <button id="nextButton" class="next-button" type="button">Próxima pergunta</button>
+            </footer>
+        </section>
+    </main>
+
+    <script>
+        const game = {
+            score: 0,
+            level: 1,
+            streak: 0,
+            secondsLeft: 20,
+            timerId: null,
+            currentAnswer: null,
+            locked: false
+        };
+
+        const operatorsByLevel = {
+            1: ['+'],
+            2: ['+', '-'],
+            3: ['+', '-', '×']
+        };
+
+        const scoreEl = document.getElementById('score');
+        const levelEl = document.getElementById('level');
+        const streakEl = document.getElementById('streak');
+        const timerEl = document.getElementById('timer');
+        const questionEl = document.getElementById('question');
+        const answersEl = document.getElementById('answers');
+        const feedbackEl = document.getElementById('feedback');
+        const nextButton = document.getElementById('nextButton');
+
+        function randomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function updateHud() {
+            scoreEl.textContent = game.score;
+            levelEl.textContent = game.level;
+            streakEl.textContent = game.streak;
+            timerEl.textContent = `${game.secondsLeft}s`;
+        }
+
+        function calculateLevel() {
+            game.level = Math.min(3, Math.floor(game.score / 80) + 1);
+        }
+
+        function generateQuestion() {
+            const operators = operatorsByLevel[game.level];
+            const operator = operators[randomInt(0, operators.length - 1)];
+
+            let a;
+            let b;
+            let answer;
+
+            if (operator === '+') {
+                a = randomInt(1, 9 + game.level * 3);
+                b = randomInt(1, 9 + game.level * 3);
+                answer = a + b;
+            } else if (operator === '-') {
+                a = randomInt(6, 16 + game.level * 3);
+                b = randomInt(1, a - 1);
+                answer = a - b;
+            } else {
+                a = randomInt(2, 5 + game.level);
+                b = randomInt(2, 5 + game.level);
+                answer = a * b;
+            }
+
+            game.currentAnswer = answer;
+            questionEl.textContent = `${a} ${operator} ${b} = ?`;
+
+            const options = new Set([answer]);
+            while (options.size < 4) {
+                const variation = randomInt(-8, 8);
+                const candidate = Math.max(0, answer + variation);
+                options.add(candidate);
+            }
+
+            const shuffled = [...options].sort(() => Math.random() - 0.5);
+            renderAnswers(shuffled);
+        }
+
+        function renderAnswers(options) {
+            answersEl.innerHTML = '';
+
+            options.forEach((option) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'answer-btn';
+                button.textContent = option;
+                button.addEventListener('click', () => handleAnswer(option, button));
+                answersEl.appendChild(button);
+            });
+        }
+
+        function lockQuestion() {
+            game.locked = true;
+            clearInterval(game.timerId);
+            [...answersEl.children].forEach((button) => {
+                button.disabled = true;
+            });
+        }
+
+        function handleAnswer(option, buttonEl) {
+            if (game.locked) return;
+
+            lockQuestion();
+
+            if (option === game.currentAnswer) {
+                game.score += 20 + (game.secondsLeft * 2);
+                game.streak += 1;
+                feedbackEl.textContent = '🎉 Muito bem! Você acertou!';
+                buttonEl.classList.add('correct');
+                if (game.streak % 3 === 0) {
+                    game.score += 15;
+                    feedbackEl.textContent += ' Bônus de sequência +15!';
+                }
+            } else {
+                game.streak = 0;
+                feedbackEl.textContent = `😅 Quase! A resposta certa era ${game.currentAnswer}.`;
+                buttonEl.classList.add('wrong');
+                [...answersEl.children].forEach((btn) => {
+                    if (Number(btn.textContent) === game.currentAnswer) {
+                        btn.classList.add('correct');
+                    }
+                });
+            }
+
+            calculateLevel();
+            updateHud();
+            nextButton.classList.add('show');
+        }
+
+        function startTimer() {
+            clearInterval(game.timerId);
+            game.secondsLeft = Math.max(12, 22 - game.level * 2);
+            updateHud();
+
+            game.timerId = setInterval(() => {
+                game.secondsLeft -= 1;
+                updateHud();
+
+                if (game.secondsLeft <= 0) {
+                    lockQuestion();
+                    game.streak = 0;
+                    feedbackEl.textContent = `⏰ Tempo esgotado! A resposta era ${game.currentAnswer}.`;
+                    [...answersEl.children].forEach((btn) => {
+                        if (Number(btn.textContent) === game.currentAnswer) {
+                            btn.classList.add('correct');
+                        }
+                    });
+                    updateHud();
+                    nextButton.classList.add('show');
+                }
+            }, 1000);
+        }
+
+        function nextRound() {
+            game.locked = false;
+            feedbackEl.textContent = 'Escolha a resposta correta 👇';
+            nextButton.classList.remove('show');
+            generateQuestion();
+            startTimer();
+        }
+
+        nextButton.addEventListener('click', nextRound);
+        nextRound();
+    </script>
 </body>
-
 </html>
